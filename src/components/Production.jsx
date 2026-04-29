@@ -32,7 +32,7 @@ function calcExpectedYield(article, meters) {
 }
 
 export default function Production() {
-  const { state, saveProduction, saveInventory } = useStore()
+  const { state, saveProduction, sendToProduction, receiveFromSeamstress } = useStore()
   const [filterStatus, setFilterStatus] = useState('vse')
   const [modal, setModal] = useState(null)
   const [receiveModal, setReceiveModal] = useState(null) // { production item }
@@ -77,21 +77,27 @@ export default function Production() {
   }
 
   async function handleSave() {
-    let updatedInventory = state.inventory
-
-    // For new complex production: deduct fabric from inventory
     if (modal.mode === 'add' && form.type === 'complex' && form.articleId && form.fabricMeters > 0) {
-      updatedInventory = state.inventory.map((item) => {
+      // Validate: enough fabric available?
+      const article = state.inventory.find(i => i.id === form.articleId)
+      const available = article?.fabric?.stock ?? 0
+      if (form.fabricMeters > available) {
+        if (!confirm(`Opozorilo: oddate ${form.fabricMeters}m blaga, na zalogi pa je samo ${available}m. Nadaljujete?`)) return
+      }
+
+      const inventoryWithDeduction = state.inventory.map((item) => {
         if (item.id !== form.articleId) return item
         return { ...item, fabric: { ...item.fabric, stock: Math.max(0, (item.fabric?.stock || 0) - form.fabricMeters) } }
       })
-      await saveInventory(updatedInventory)
+      // Atomic operation: deduct fabric + create production (with rollback on failure)
+      await sendToProduction(form, inventoryWithDeduction)
+    } else {
+      const next = modal.mode === 'add'
+        ? [...state.production, form]
+        : state.production.map((p) => (p.id === form.id ? form : p))
+      const action = modal.mode === 'add' ? 'production_create' : 'production_update'
+      await saveProduction(next, action, { article: form.articleName })
     }
-
-    const next = modal.mode === 'add'
-      ? [...state.production, form]
-      : state.production.map((p) => (p.id === form.id ? form : p))
-    await saveProduction(next)
     setModal(null)
   }
 
@@ -108,25 +114,13 @@ export default function Production() {
 
   async function handleReceive() {
     const p = receiveModal
-    // Add received pieces to inventory variants
-    if (p.articleId) {
-      const updatedInventory = state.inventory.map((item) => {
-        if (item.id !== p.articleId) return item
-        const variants = item.variants.map((v) => ({
-          ...v,
-          qty: (v.qty || 0) + (actualYield[v.size] || 0),
-        }))
-        return { ...item, variants }
-      })
-      await saveInventory(updatedInventory)
-    }
-
     const updatedProduction = state.production.map((prod) =>
       prod.id === p.id
         ? { ...prod, status: 'vrnjeno', returnedDate: new Date().toISOString().slice(0, 10), actualYield }
         : prod
     )
-    await saveProduction(updatedProduction)
+    // Atomic: update production status + add pieces to inventory (with rollback on failure)
+    await receiveFromSeamstress(p.id, actualYield, updatedProduction)
     setReceiveModal(null)
   }
 

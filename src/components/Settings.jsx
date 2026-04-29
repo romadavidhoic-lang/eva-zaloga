@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Save, Eye, EyeOff, CheckCircle, XCircle, Loader, Plus, Trash2 } from 'lucide-react'
-import { isConfigured, readFile } from '../lib/github.js'
+import { Save, Eye, EyeOff, CheckCircle, XCircle, Loader, Plus, Trash2, History, AlertTriangle, Download } from 'lucide-react'
+import { isConfigured, loadBackupList, loadBackup } from '../lib/github.js'
 import { useStore } from '../lib/store.jsx'
+import { exportJSON, formatDate } from '../lib/export.js'
 
 export default function Settings({ setPage }) {
-  const { reload } = useStore()
+  const { reload, restoreFromBackup } = useStore()
   const [token, setToken] = useState(localStorage.getItem('gh_token') || '')
   const [owner, setOwner] = useState(localStorage.getItem('gh_owner') || '')
   const [repo, setRepo] = useState(localStorage.getItem('gh_repo') || '')
@@ -19,9 +20,49 @@ export default function Settings({ setPage }) {
   const [channels, setChannels] = useState(state.channels || [])
   const [newCh, setNewCh] = useState({ name: '', id: '' })
 
+  // Backups
+  const [backups, setBackups] = useState([])
+  const [backupsLoading, setBackupsLoading] = useState(false)
+  const [restoring, setRestoring] = useState(null) // backup filename being restored
+  const [pendingOp] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('eva_pending_op') || 'null') } catch { return null }
+  })
+
   useEffect(() => {
     setChannels(state.channels || [])
   }, [state.channels])
+
+  async function fetchBackups() {
+    setBackupsLoading(true)
+    const list = await loadBackupList()
+    setBackups(list)
+    setBackupsLoading(false)
+  }
+
+  async function handleRestore(file) {
+    if (!confirm(`Obnovi podatke iz backupa ${file.name}? Trenutni podatki bodo prepisani!`)) return
+    setRestoring(file.name)
+    try {
+      const data = await loadBackup(file.path)
+      if (!data) throw new Error('Backup je prazen ali ni bil najden')
+      await restoreFromBackup(data)
+      localStorage.removeItem('eva_pending_op')
+      alert('Obnova uspešna!')
+    } catch (e) {
+      alert('Napaka pri obnovi: ' + e.message)
+    } finally {
+      setRestoring(null)
+    }
+  }
+
+  function downloadBackupLocally() {
+    exportJSON('eva-backup-' + new Date().toISOString().slice(0, 10), {
+      inventory: state.inventory,
+      production: state.production,
+      purchases: state.purchases,
+      exportedAt: new Date().toISOString(),
+    })
+  }
 
   function saveSettings() {
     localStorage.setItem('gh_token', token)
@@ -193,6 +234,80 @@ export default function Settings({ setPage }) {
           </button>
         </div>
         <p className="text-xs text-gray-400">Skupaj {channels.length}/3 kanalov (Shopify + 2 dodatna)</p>
+      </div>
+
+      {/* Backup & Recovery */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <History size={16} className="text-brand-500" /> Backup &amp; Obnova
+          </h2>
+          <button onClick={downloadBackupLocally} className="btn-secondary text-xs">
+            <Download size={13} /> Prenesi backup zdaj
+          </button>
+        </div>
+
+        {/* Pending op warning */}
+        {pendingOp && (
+          <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <AlertTriangle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-red-700">
+              <p className="font-semibold">Nedokončana operacija zaznana</p>
+              <p className="mt-0.5">Tip: <code>{pendingOp.type}</code> — začeta {new Date(pendingOp.startedAt).toLocaleString('sl-SI')}</p>
+              <p className="mt-1">Preverite zalogo ročno in po potrebi obnovite iz backupa spodaj.</p>
+              <button
+                onClick={() => { localStorage.removeItem('eva_pending_op'); window.location.reload() }}
+                className="mt-2 underline text-red-600"
+              >
+                Počisti opozorilo
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-500">
+          Backup se naredi samodejno enkrat na dan ob prvi shranitvi. Zadnjih 30 dni je na voljo za obnovo.
+        </p>
+
+        {backups.length === 0 && !backupsLoading && (
+          <button onClick={fetchBackups} className="btn-secondary w-full justify-center">
+            <History size={15} /> Naloži seznam backupov
+          </button>
+        )}
+
+        {backupsLoading && (
+          <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+            <Loader size={14} className="animate-spin" /> Nalaganje...
+          </div>
+        )}
+
+        {backups.length > 0 && (
+          <div className="space-y-1 max-h-64 overflow-y-auto">
+            {backups.map(file => {
+              const dateStr = file.name.replace('.json', '')
+              const isToday = dateStr === new Date().toISOString().slice(0, 10)
+              return (
+                <div key={file.name} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">
+                      {dateStr} {isToday && <span className="badge-green ml-1">danes</span>}
+                    </p>
+                    <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                  <button
+                    onClick={() => handleRestore(file)}
+                    disabled={restoring === file.name}
+                    className="btn-secondary text-xs disabled:opacity-50"
+                  >
+                    {restoring === file.name
+                      ? <><Loader size={12} className="animate-spin" /> Obnavljam...</>
+                      : 'Obnovi'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
