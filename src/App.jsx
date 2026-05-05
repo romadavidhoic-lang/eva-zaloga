@@ -1,5 +1,8 @@
 import React, { useState } from 'react'
 import { StoreProvider } from './lib/store.jsx'
+import { ToastProvider } from './lib/toast.jsx'
+import { usePinLock } from './components/PinLock.jsx'
+import PinLock from './components/PinLock.jsx'
 import Layout from './components/Layout.jsx'
 import Dashboard from './components/Dashboard.jsx'
 import Inventory from './components/Inventory.jsx'
@@ -7,27 +10,42 @@ import Production from './components/Production.jsx'
 import Purchases from './components/Purchases.jsx'
 import Reports from './components/Reports.jsx'
 import Settings from './components/Settings.jsx'
+import Help from './components/Help.jsx'
 
-function Pages({ page, setPage }) {
+function Pages({ page, setPage, pinLock }) {
   switch (page) {
-    case 'dashboard': return <Dashboard setPage={setPage} />
-    case 'inventory': return <Inventory />
+    case 'dashboard':  return <Dashboard setPage={setPage} />
+    case 'inventory':  return <Inventory />
     case 'production': return <Production />
-    case 'purchases': return <Purchases />
-    case 'reports': return <Reports />
-    case 'settings': return <Settings setPage={setPage} />
-    default: return <Dashboard setPage={setPage} />
+    case 'purchases':  return <Purchases />
+    case 'reports':    return <Reports />
+    case 'settings':   return <Settings setPage={setPage} pinLock={pinLock} />
+    case 'help':       return <Help />
+    default:           return <Dashboard setPage={setPage} />
   }
 }
 
-export default function App() {
+function AppInner() {
   const [page, setPage] = useState('dashboard')
+  const pinLock = usePinLock()
+
+  if (pinLock.locked) {
+    return <PinLock onUnlock={pinLock.unlock} />
+  }
 
   return (
-    <StoreProvider>
-      <Layout page={page} setPage={setPage}>
-        <Pages page={page} setPage={setPage} />
-      </Layout>
-    </StoreProvider>
+    <Layout page={page} setPage={setPage} pinLock={pinLock}>
+      <Pages page={page} setPage={setPage} pinLock={pinLock} />
+    </Layout>
+  )
+}
+
+export default function App() {
+  return (
+    <ToastProvider>
+      <StoreProvider>
+        <AppInner />
+      </StoreProvider>
+    </ToastProvider>
   )
 }

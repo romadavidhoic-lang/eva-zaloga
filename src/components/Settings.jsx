@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Save, Eye, EyeOff, CheckCircle, XCircle, Loader, Plus, Trash2, History, AlertTriangle, Download } from 'lucide-react'
+import { Save, Eye, EyeOff, CheckCircle, XCircle, Loader, Plus, Trash2, History, AlertTriangle, Download, Shield } from 'lucide-react'
 import { isConfigured, loadBackupList, loadBackup } from '../lib/github.js'
 import { useStore } from '../lib/store.jsx'
 import { exportJSON, formatDate } from '../lib/export.js'
+import { PinSettings } from './PinLock.jsx'
 
-export default function Settings({ setPage }) {
+export default function Settings({ setPage, pinLock }) {
   const { reload, restoreFromBackup } = useStore()
   const [token, setToken] = useState(localStorage.getItem('gh_token') || '')
   const [owner, setOwner] = useState(localStorage.getItem('gh_owner') || '')
@@ -234,6 +235,26 @@ export default function Settings({ setPage }) {
           </button>
         </div>
         <p className="text-xs text-gray-400">Skupaj {channels.length}/3 kanalov (Shopify + 2 dodatna)</p>
+      </div>
+
+      {/* PIN Security */}
+      <div className="card p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+          <Shield size={16} className="text-brand-500" /> Varnost — PIN zaščita
+        </h2>
+        <p className="text-xs text-gray-500">
+          PIN prepreči nepooblaščen dostop z istega brskalnika. Zahteva se ob vsakem odprtju brskalnika.
+        </p>
+        {pinLock ? (
+          <PinSettings
+            pinEnabled={pinLock.pinEnabled}
+            onSetPin={pinLock.setPin}
+            onRemovePin={pinLock.removePin}
+            onLock={pinLock.lock}
+          />
+        ) : (
+          <p className="text-xs text-gray-400">PIN nastavitve niso dosegljive.</p>
+        )}
       </div>
 
       {/* Backup & Recovery */}
