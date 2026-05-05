@@ -37,7 +37,7 @@ export default function Layout({ page, setPage, children }) {
         {/* Logo */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-gray-100">
           <div>
-            <p className="text-sm font-bold text-brand-700 leading-tight">Eva Žaponšek</p>
+            <p className="text-sm font-bold text-brand-700 leading-tight">Eva Zaponšek</p>
             <p className="text-xs text-gray-400">Upravljanje zaloge</p>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-gray-400 hover:text-gray-600">
